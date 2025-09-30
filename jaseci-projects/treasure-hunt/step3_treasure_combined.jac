@@ -82,3 +82,4 @@ with entry {
     game = TreasureHunt();
     game.play();
 }
+
