@@ -1,4 +1,4 @@
-# // stepB_llm_artifact_game.jac
+# // step6_llm_artifact_game.jac
 import random;
 
 # byLLM integration — load actual LLM model
