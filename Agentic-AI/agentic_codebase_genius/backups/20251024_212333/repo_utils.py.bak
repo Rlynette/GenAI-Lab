@@ -1,0 +1,124 @@
+"""
+Repo utilities for Codebase Genius.
+
+- clone_repo(url, dest_parent="tmp_clones", depth=1) -> Path
+  * Default behavior: shallow clone (depth=1) — fast and sufficient for analysis.
+  * To fetch full history, pass depth=None.
+
+- file_tree(path, depth=2) -> dict
+- get_repo_root() -> Path
+- list_repo_files(path=None) -> list
+- summarize_readme(path=None, max_chars=1000) -> str
+
+Requires: GitPython (pip install GitPython)
+"""
+from pathlib import Path
+import shutil
+import os
+import tempfile
+import textwrap
+
+try:
+    from git import Repo, GitCommandError
+except Exception:
+    Repo = None
+    GitCommandError = Exception
+
+def get_repo_root() -> Path:
+    """Return the project root (where .git is)."""
+    p = Path.cwd()
+    for ancestor in [p] + list(p.parents):
+        if (ancestor / ".git").exists():
+            return ancestor
+    return p
+
+def clone_repo(url: str, dest_parent: str = "tmp_clones", depth: int | None = 1) -> Path:
+    """
+    Clone a public GitHub repo to dest_parent/<repo-name>.
+    Default is a shallow clone (depth=1). Pass depth=None to clone full history.
+
+    If the destination already exists and contains a .git, returns that path.
+    """
+    if Repo is None:
+        raise RuntimeError("GitPython not installed. Run: pip install GitPython")
+
+    dest_parent_path = Path(dest_parent).expanduser().resolve()
+    dest_parent_path.mkdir(parents=True, exist_ok=True)
+
+    repo_name = url.rstrip("/").split("/")[-1]
+    if repo_name.endswith(".git"):
+        repo_name = repo_name[:-4]
+    dest_path = dest_parent_path / repo_name
+
+    # If already cloned, return existing path
+    if dest_path.exists() and (dest_path / ".git").exists():
+        return dest_path
+
+    # Attempt clone (use shallow clone by default)
+    try:
+        if depth is None:
+            # full clone
+            Repo.clone_from(url, dest_path)
+        else:
+            # shallow clone
+            Repo.clone_from(url, dest_path, depth=int(depth))
+    except GitCommandError:
+        # Try to clean partial clone if present
+        if dest_path.exists() and any(dest_path.iterdir()):
+            try:
+                shutil.rmtree(dest_path)
+            except Exception:
+                pass
+        raise
+
+    return dest_path
+
+def _node_for_path(p: Path, depth: int) -> dict:
+    """Helper to build file tree node (limited depth)."""
+    if not p.exists():
+        return {"type": "missing"}
+    if p.is_file():
+        return {"type": "file", "size": p.stat().st_size}
+    node = {"type": "dir", "children": {}}
+    if depth <= 0:
+        return node
+    try:
+        for child in sorted(p.iterdir(), key=lambda x: x.name):
+            # ignore .git and common big dirs
+            if child.name in [".git", "node_modules", "__pycache__", "venv", "env", "outputs"]:
+                continue
+            node["children"][child.name] = _node_for_path(child, depth - 1)
+    except PermissionError:
+        node["error"] = "permission denied"
+    return node
+
+def file_tree(path: str or Path, depth: int = 2) -> dict:
+    """Return a nested dict representation of the file tree rooted at path."""
+    p = Path(path)
+    return {p.name: _node_for_path(p, depth)}
+
+def list_repo_files(path: str or Path = None) -> list:
+    """Return list of files under path (or repo root)."""
+    base = Path(path) if path else get_repo_root()
+    out = []
+    for root, dirs, files in os.walk(base):
+        parts = Path(root).parts
+        # skip .git and env folders
+        if ".git" in parts or "node_modules" in parts or "env" in parts or "venv" in parts or "outputs" in parts:
+            continue
+        for f in files:
+            out.append(str(Path(root) / f))
+    return out
+
+def summarize_readme(path: str or Path = None, max_chars: int = 1000) -> str:
+    """Return first chunk of README.md or similar file as a simple summary."""
+    base = Path(path) if path else get_repo_root()
+    candidates = ["README.md", "readme.md", "README.MD"]
+    for c in candidates:
+        f = base / c
+        if f.exists():
+            txt = f.read_text(encoding="utf-8", errors="ignore")
+            paragraphs = [p.strip() for p in txt.split("\n\n") if p.strip()]
+            summary = paragraphs[0] if paragraphs else txt[:max_chars]
+            return textwrap.shorten(summary, width=max_chars, placeholder="...")
+    return ""

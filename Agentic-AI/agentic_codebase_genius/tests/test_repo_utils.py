@@ -10,3 +10,11 @@ def test_list_repo_files_nonempty():
     files = ru.list_repo_files()
     assert isinstance(files, list)
     assert len(files) > 0, "No tracked files found in repo"
+
+# tests/test_repo_utils.py
+# from utils.repo_utils import clone_repo
+
+# def test_clone_repo():
+#     path = clone_repo("https://github.com/jaseci-labs/jaseci")
+#     assert path.endswith("jaseci")
+
