@@ -1,0 +1,16 @@
+import py_module.repo_utils as repo;
+
+# Repo mapper walker for REST server
+walker repo_mapper {
+    has url: str = "";
+
+    # the server will call the `run` ability for a `root entry`
+    can run with `root entry {
+        emit(self, "info", "repo_mapper: starting for " + self.url);
+        # call python wrapper - it returns a string path
+        cloned = repo.clone_repo(self.url, "tmp_clones");
+        emit(self, "info", "repo_mapper: cloned to " + cloned);
+        tree = repo.file_tree(cloned, 2);
+        emit(self, "result", tree);
+    }
+}

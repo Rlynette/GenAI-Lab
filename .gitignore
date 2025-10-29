@@ -1,0 +1,13 @@
+env/
+.env
+__pycache__/
+outputs/
+*.pyc
+tmp_clones/
+.env
+.env.local
+*.key
+tmp_clones/
+.env
+.env.local
+*.key
