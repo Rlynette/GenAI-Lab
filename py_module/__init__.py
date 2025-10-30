@@ -1,1 +1,2 @@
-# py_module package for Jac to call into Python helpers
+# py_module package init
+__all__ = ["readme_summarizer"]
