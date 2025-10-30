@@ -43,3 +43,39 @@ If you want I can now:
 
 Which do you want me to do now?
 ::contentReference[oaicite:0]{index=0}
+
+
+### Run the Jac repo-mapper walker (HTTP)
+
+1. Start server (Terminal A)
+```bash
+source env/bin/activate
+export PYTHONPATH="$PWD:$PYTHONPATH"
+export REPO_URL="https://github.com/jaseci-labs/jaseci"  # optional fallback
+jac serve BE/repo_mapper.jac
+
+2. Call walker (Terminal B)
+export JAC_TOKEN="<your_jac_token_here>"
+curl -s -X POST "http://localhost:8000/walker/repo_mapper" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $JAC_TOKEN" \
+  -d '{"fields":{"url":"https://github.com/jaseci-labs/jaseci"}}' \
+  | jq .
+
+
+Expected: JSON output containing reports array with cloned_path and tree.
+
+---
+
+# 7 — Git: commit & push your changes (on feature branch)
+After making changes (repo_utils.py, tests, README), commit & push from the feature branch:
+
+```bash
+git checkout feature/repo-mapper
+git add utils/repo_utils.py tests/test_walker_integration.py README.md
+git commit -m "Harden repo_utils, add integration test and README curl example"
+git push origin feature/repo-mapper
+
+
+If you changed the branch name locally and want to set upstream:
+git push -u origin feature/repo-mapper
