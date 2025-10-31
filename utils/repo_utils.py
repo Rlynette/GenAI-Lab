@@ -17,7 +17,7 @@ import time
 from pathlib import Path
 from typing import Dict, Any, Optional
 from urllib.parse import urlparse
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Simple URL checker: accept http(s) and git@... patterns or local paths
 _GIT_SSH_RE = re.compile(r"^(?:git@|ssh://)")
@@ -75,7 +75,7 @@ def clone_repo(
     dest_parent_p.mkdir(parents=True, exist_ok=True)
 
     repo_name = _normalize_repo_name(url)
-    timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S%f")[:-3]
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")[:-3]
     dest = dest_parent_p / f"{repo_name}-{timestamp}"
 
     # If force and dest exists for some reason, remove it
