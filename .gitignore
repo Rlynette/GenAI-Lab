@@ -89,3 +89,5 @@ cython_debug/
 
 # macOS
 .DS_Store
+.env
+backups/

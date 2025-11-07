@@ -1,0 +1,9 @@
+import py_module.repo_utils as repo;
+
+walker repo_mapper(url) {
+    emit(self, "info", "repo_mapper: starting");
+    cloned = repo.clone_repo(url, "tmp_clones");
+    emit(self, "info", "repo_mapper: cloned to " + cloned);
+    tree = repo.file_tree(cloned, 2);
+    emit(self, "result", tree);
+}

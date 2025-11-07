@@ -1,0 +1,31 @@
+# Environment variables
+.env
+*.env
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Project-specific
+generated_article_final.md
+generated_article_image.png
+trending_topics.md
+input.json
+Jac_Content_Generator.pdf
+trend_agent.jac
+writer_agent.jac
+
+#test
+just.jac
+mainnot.jac
+test.docx
+test.pdf
+
+app.py
+
+/documents
+/documents_new
+/agents
+
+

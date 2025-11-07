@@ -1,0 +1,18 @@
+import os
+from utils import repo_utils
+
+def clone_repo(url: str = "", dest_parent: str = "tmp_clones", depth: object = 1):
+    """
+    Called by Jac. If url is empty, read from env REPO_URL.
+    depth: integer or None. Default is 1 (shallow); None => full clone.
+    """
+    u = url if url else os.environ.get("REPO_URL", "")
+    if not u:
+        raise ValueError("No repo URL provided (arg or env REPO_URL).")
+    # Accept depth as string if called from Jac
+    if isinstance(depth, str):
+        depth = None if depth.lower() in ("none", "null", "") else int(depth)
+    return str(repo_utils.clone_repo(u, dest_parent=dest_parent, depth=depth))
+
+def file_tree(path: str, depth: int = 2):
+    return repo_utils.file_tree(path, depth)

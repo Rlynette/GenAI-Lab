@@ -1,0 +1,10 @@
+jaclang
+jac-cloud
+python-dotenv
+requests
+mtllm==0.4.0
+pymongo
+langchain-openai
+langchain-community
+langchain-chroma
+pypdf
