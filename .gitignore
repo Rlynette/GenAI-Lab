@@ -11,3 +11,10 @@ tmp_clones/
 .env
 .env.local
 *.key
+
+### local secrets
+.env
+.env.*
+.local_env.sh
+backups/untracked*
+~/.codegen_token
