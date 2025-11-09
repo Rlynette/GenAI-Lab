@@ -91,3 +91,4 @@ cython_debug/
 .DS_Store
 .env
 backups/
+tmp_clones/
