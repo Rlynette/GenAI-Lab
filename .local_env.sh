@@ -1,0 +1,1 @@
+export TOKEN_SECRET="dev_token_secret_change_me_to_a_long_random_value"

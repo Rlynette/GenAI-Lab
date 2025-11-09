@@ -1,0 +1,7 @@
+# utils package initializer
+# Expose repo_utils as a direct import for tests: `from utils import repo_utils`
+# Also keep this file minimal to avoid import-time side effects.
+
+from . import repo_utils  # type: ignore
+
+__all__ = ["repo_utils"]
