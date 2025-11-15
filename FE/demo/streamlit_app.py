@@ -35,7 +35,7 @@ if st.button("Run repo_mapper"):
         headers["Authorization"] = f"Bearer {JAC_TOKEN}"
     try:
         with st.spinner("Calling walker... this may take a minute for clones"):
-            r = requests.post(f"{JAC_SERVER}/walker/repo_mapper", headers=headers, json=payload, timeout=300)
+            r = requests.post(f"{JAC_SERVER}/walker/repo_mapper", headers=headers, json={"fields": payload}, timeout=300)
         try:
             rj = r.json()
         except Exception:

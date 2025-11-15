@@ -1,32 +1,30 @@
 """
 py_module.ccg_builder
 
-Simple, fast Code Context Graph (CCG) builder and query helpers.
-Designed to be small and predictable for demos/tests.
+Simple, robust Code Context Graph (CCG) builder and query helpers.
 
 Functions:
-- build_ccg(path) -> { "nodes": [<qname>...], "edges": [{"src":..., "tgt":..., "type":"call"|"inherit"}...] }
+- build_ccg(path) -> { "nodes": [...], "edges": [{ "src": ..., "tgt": ..., "type": "call"|"inherit" }, ...] }
 - query_callers(graph, target) -> [src_qname,...]
 - query_callees(graph, target) -> [tgt_qname,...]
 - query_inherits(graph, target) -> [child_qname,...]
 
-Accepts either a file path (single source file) or a directory (walks .py files).
-It only does best-effort extraction of simple call targets (Name or attr chains).
+Accepts a file path or directory. Skips obvious virtualenv/tmp folders.
 """
 from pathlib import Path
 import ast
-import json
-from typing import Dict, List
+from typing import Dict, List, Set
+
+IGNORE_DIRS = {"env", ".venv", ".git", "tmp_clones", "venv", "__pycache__"}
 
 def _qualname(module: str, name: str) -> str:
     return f"{module}.{name}" if module else name
 
-def _get_call_name(node):
-    # Try to extract a best-effort string for a Call node's function.
+def _get_attr_name(node):
+    """Return dotted name for Attribute or Name nodes, best-effort."""
     if isinstance(node, ast.Name):
         return node.id
     if isinstance(node, ast.Attribute):
-        # produce dotted attribute name like obj.method
         parts = []
         cur = node
         while isinstance(cur, ast.Attribute):
@@ -34,132 +32,153 @@ def _get_call_name(node):
             cur = cur.value
         if isinstance(cur, ast.Name):
             parts.append(cur.id)
-        return ".".join(reversed(parts))
+        parts.reverse()
+        return ".".join(parts)
     return None
 
-def _visit_file(path: Path, module: str):
-    """
-    Returns two lists:
-    - defs: list of qualified names defined in this file (functions and classes)
-    - edges: list of ("caller", "callee", "type") where caller/callee are qnames
-    """
-    text = path.read_text(encoding="utf-8", errors="ignore")
-    tree = ast.parse(text)
-    defs = []
-    edges = []
+def _get_call_name(node):
+    """Get a best-effort string for a Call.func node."""
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return _get_attr_name(node)
+    return None
 
-    # map node -> current enclosing function/class qualname
-    class DefVisitor(ast.NodeVisitor):
-        def __init__(self):
-            self.stack = []  # stack of qualnames
-
-        def visit_FunctionDef(self, node):
-            cur_q = _qualname(module, ".".join(self.stack + [node.name]))
-            defs.append(cur_q)
-            # scan body for calls
-            prev_stack = list(self.stack)
-            self.stack.append(node.name)
-            CallVisitor(self.stack, cur_q).visit(node)
-            self.stack = prev_stack
-            # continue visiting nested defs
-            for c in node.body:
-                self.generic_visit(c)
-
-        def visit_AsyncFunctionDef(self, node):
-            self.visit_FunctionDef(node)
-
-        def visit_ClassDef(self, node):
-            cur_q = _qualname(module, ".".join(self.stack + [node.name]))
-            defs.append(cur_q)
-            # inheritance edges
-            for base in node.bases:
-                if isinstance(base, ast.Name):
-                    edges.append((cur_q, base.id, "inherit"))
-                elif isinstance(base, ast.Attribute):
-                    # best-effort
-                    edges.append((cur_q, _get_call_name(base), "inherit"))
-            prev_stack = list(self.stack)
-            self.stack.append(node.name)
-            # visit methods
-            for c in node.body:
-                if isinstance(c, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    self.visit_FunctionDef(c)
-                else:
-                    self.generic_visit(c)
-            self.stack = prev_stack
-
-    class CallVisitor(ast.NodeVisitor):
-        def __init__(self, stack, cur_q):
-            self.stack = stack
-            self.cur_q = cur_q
-
-        def visit_Call(self, node):
-            name = _get_call_name(node.func)
-            if name:
-                # callee qname best-effort -- if it's unqualified, use name only
-                edges.append((self.cur_q, name, "call"))
-            # continue
-            self.generic_visit(node)
-
-    DefVisitor().visit(tree)
-    return defs, edges
+def _iter_py_files(root: Path):
+    if root.is_file() and root.suffix == ".py":
+        yield root
+        return
+    for p in root.rglob("*.py"):
+        if any(part in IGNORE_DIRS for part in p.parts):
+            continue
+        yield p
 
 def build_ccg(path: str) -> Dict:
-    p = Path(path)
-    nodes = set()
-    edges = []
-    files = []
-    if p.is_file():
-        files = [p]
-        module = p.stem
-    else:
-        # walk .py files (exclude venv/tmp_clones)
-        files = [f for f in p.rglob("*.py") if "/env/" not in str(f) and "/tmp_clones/" not in str(f)]
-        module = ""  # when directory, use qualified names including relative path
-    for f in files:
-        mod = module or ".".join(f.relative_to(Path.cwd()).with_suffix("").parts)
+    """
+    Build a small code-context graph from path (file or directory).
+    Returns {"nodes": [qname...], "edges": [{"src":..., "tgt":..., "type":"call"|"inherit"}...]}
+    """
+    repo_root = Path.cwd().resolve()
+    root = Path(path)
+    # accept file, dir, or module-ish string
+    if not root.exists():
+        # fallback: try treat as module-ish path under repo
+        root = repo_root / path
+
+    nodes: Set[str] = set()
+    edges: List[Dict] = []
+
+    for f in _iter_py_files(root):
         try:
-            defs, f_edges = _visit_file(f, mod)
+            f_resolved = f.resolve()
         except Exception:
-            # skip parse errors -- best-effort
+            f_resolved = f
+
+        # module name: try relative to repo root, otherwise use stem
+        try:
+            module = ".".join(f_resolved.relative_to(repo_root).with_suffix("").parts)
+        except Exception:
+            module = f_resolved.stem
+
+        src_text = f_resolved.read_text(encoding="utf-8", errors="ignore")
+        try:
+            tree = ast.parse(src_text)
+        except Exception:
+            # skip unparsable file
             continue
-        for d in defs:
-            nodes.add(d)
-        for src, tgt, typ in f_edges:
-            edges.append({"src": src, "tgt": tgt, "type": typ})
-            # also ensure nodes exist for targets (best-effort)
-            nodes.add(src)
-            nodes.add(tgt)
+
+        # record top-level functions and classes (qualnames)
+        for node in tree.body:
+            if isinstance(node, ast.FunctionDef):
+                q = _qualname(module, node.name)
+                nodes.add(q)
+            elif isinstance(node, ast.ClassDef):
+                q = _qualname(module, node.name)
+                nodes.add(q)
+                # inheritance edges
+                for base in node.bases:
+                    base_name = None
+                    if isinstance(base, ast.Name):
+                        base_name = base.id
+                    elif isinstance(base, ast.Attribute):
+                        base_name = _get_attr_name(base)
+                    if base_name:
+                        # record base as node (best effort) and inherit edge
+                        nodes.add(base_name)
+                        edges.append({"src": base_name, "tgt": q, "type": "inherit"})
+
+        # traverse functions and find Call nodes (calls from function -> target)
+        class CallVisitor(ast.NodeVisitor):
+            def __init__(self, module_name):
+                self.module_name = module_name
+                self.current_fn = None
+
+            def visit_FunctionDef(self, node):
+                self.current_fn = _qualname(self.module_name, node.name)
+                nodes.add(self.current_fn)
+                self.generic_visit(node)
+                self.current_fn = None
+
+            def visit_ClassDef(self, node):
+                # methods inside class -> qualify as Class.method
+                prev = self.current_fn
+                self.current_fn = _qualname(self.module_name, node.name)
+                # still traverse body to catch nested defs
+                self.generic_visit(node)
+                self.current_fn = prev
+
+            def visit_Call(self, node):
+                try:
+                    name = _get_call_name(node.func)
+                    if name:
+                        # build a best-effort target qualname: if it's dotted use as-is,
+                        # otherwise attach module only if ambiguous
+                        tgt = name
+                        # record nodes and edges
+                        nodes.add(tgt)
+                        if self.current_fn:
+                            edges.append({"src": self.current_fn, "tgt": tgt, "type": "call"})
+                except Exception:
+                    pass
+                self.generic_visit(node)
+
+        CallVisitor(module).visit(tree)
+
     return {"nodes": sorted(nodes), "edges": edges}
 
 def query_callers(graph: Dict, target: str) -> List[str]:
-    # callers are edges where tgt matches target or endswith '.target'
-    res = []
+    """Return list of unique call-source qualnames that call `target` (match by final name)."""
+    out = []
     for e in graph.get("edges", []):
-        if e["type"] == "call":
-            if e["tgt"] == target or e["tgt"].endswith("." + target):
-                res.append(e["src"])
-    return sorted(set(res))
+        if e.get("type") != "call":
+            continue
+        tgt = e.get("tgt", "")
+        if tgt.split(".")[-1] == target or tgt == target:
+            src = e.get("src")
+            if src and src not in out:
+                out.append(src)
+    return out
 
 def query_callees(graph: Dict, target: str) -> List[str]:
-    # callees called by target
-    res = []
+    """Return list of unique call-target qualnames called by `target` sources."""
+    out = []
     for e in graph.get("edges", []):
-        if e["type"] == "call":
-            if e["src"] == target or e["src"].endswith("." + target):
-                res.append(e["tgt"])
-    return sorted(set(res))
+        if e.get("type") != "call":
+            continue
+        if e.get("src","").split(".")[-1] == target or e.get("src","") == target:
+            tgt = e.get("tgt")
+            if tgt and tgt not in out:
+                out.append(tgt)
+    return out
 
 def query_inherits(graph: Dict, target: str) -> List[str]:
-    res = []
+    """Return list of classes that inherit from `target` (match by final name)."""
+    out = []
     for e in graph.get("edges", []):
-        if e["type"] == "inherit":
-            if e["tgt"] == target or e["tgt"].endswith("." + target):
-                res.append(e["src"])
-    return sorted(set(res))
-
-if __name__ == "__main__":
-    import sys, json
-    path = sys.argv[1] if len(sys.argv) > 1 else "py_module/code_analyzer.py"
-    g = build_ccg(path)
-    print(json.dumps({"nodes": len(g["nodes"]), "edges": len(g["edges"])}, indent=2))
+        if e.get("type") != "inherit":
+            continue
+        if e.get("src","").split(".")[-1] == target or e.get("src","") == target:
+            child = e.get("tgt")
+            if child and child not in out:
+                out.append(child)
+    return out
