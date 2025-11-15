@@ -20,7 +20,7 @@ col1, col2 = st.columns(2)
 with col1:
     if st.button("List walkers"):
         try:
-            r = requests.get(f"{JAC_SERVER}/walkers", headers={"Authorization": f"Bearer {JAC_TOKEN}"} if JAC_TOKEN else {})
+            r = requests.get(f"{JAC_SERVER}/walker", headers={"Authorization": f"Bearer {JAC_TOKEN}"} if JAC_TOKEN else {})
             r.raise_for_status()
             st.json(r.json())
         except Exception as e:
@@ -35,7 +35,7 @@ if st.button("Run repo_mapper"):
         headers["Authorization"] = f"Bearer {JAC_TOKEN}"
     try:
         with st.spinner("Calling walker... this may take a minute for clones"):
-            r = requests.post(f"{JAC_SERVER}/walker/repo_mapper", headers=headers, json=payload, timeout=300)
+            r = requests.post(f"{JAC_SERVER}/walker/repo_mapper", headers=headers, json={"fields": payload}, timeout=300)
         try:
             rj = r.json()
         except Exception:

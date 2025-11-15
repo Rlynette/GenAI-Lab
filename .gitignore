@@ -92,3 +92,13 @@ cython_debug/
 .env
 backups/
 tmp_clones/
+
+# Local dev secrets/temp
+.tmp_clones/
+tmp_clones/
+*.token
+.codegen_token
+.env
+.env.*
+/tmp/auto_README.md
+
